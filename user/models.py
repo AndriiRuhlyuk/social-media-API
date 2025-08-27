@@ -1,3 +1,8 @@
+import pathlib
+import uuid
+from django.contrib.postgres.indexes import BTreeIndex
+
+from django.conf import settings
 from django.contrib.auth.models import (
     AbstractUser,
     BaseUserManager,
@@ -42,9 +47,100 @@ class UserManager(BaseUserManager):
 
 class User(AbstractUser):
     username = None
+    first_name = None
+    last_name = None
     email = models.EmailField(_("email address"), unique=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
     objects = UserManager()
+
+    @property
+    def full_name(self):
+        if hasattr(self, "profile"):
+            return self.profile.full_name
+        return self.email.split("@")[0]
+
+
+def profile_image_path(instance: "Profile", filename: str) -> str:
+    ext = pathlib.Path(filename).suffix
+    filename = f"{instance.user.id}-{uuid.uuid4()}{ext}"
+    return f"upload/profile/{filename}"
+
+
+class Profile(models.Model):
+    class GenderChoices(models.TextChoices):
+        MALE = "Male"
+        FEMALE = "Female"
+        OTHER = "Other"
+
+    first_name = models.CharField(max_length=255, blank=True)
+    last_name = models.CharField(max_length=255, blank=True)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile"
+    )
+    bio = models.TextField(max_length=500, blank=True)
+    profile_picture = models.ImageField(
+        blank=True, null=True, upload_to=profile_image_path
+    )
+    date_of_birth = models.DateField(
+        blank=True,
+        null=True,
+    )
+    location = models.CharField(max_length=100, blank=True)
+    is_private = models.BooleanField(default=False)
+    followers_count = models.PositiveIntegerField(default=0)
+    following_count = models.PositiveIntegerField(default=0)
+    gender = models.CharField(
+        max_length=10, choices=GenderChoices.choices, default=GenderChoices.OTHER
+    )
+    posts_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def full_name(self):
+        if self.first_name and self.last_name:
+            return f"{self.first_name} {self.last_name}"
+        return self.first_name or self.last_name or self.user.email.split("@")[0]
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["location"]),
+            models.Index(fields=["gender"]),
+            models.Index(fields=["is_private"]),
+            models.Index(fields=["first_name"]),
+            models.Index(fields=["last_name"]),
+            BTreeIndex(fields=["-created_at"]),
+        ]
+
+    def can_view_details(self, viewer_user) -> bool:
+        """
+        Privacy Rules :
+        - if public profile — can see all
+        - owner can see
+        - else need have ACCEPTED-follow from viewer -> self
+        """
+        if not self.is_private:
+            return True
+
+        if not getattr(viewer_user, "is_authenticated", False):
+            return False
+
+        if viewer_user.id == self.user_id:
+            return True
+
+        viewer_profile = getattr(viewer_user, "profile", None)
+
+        from networking.models import Follow
+
+        return Follow.objects.filter(
+            follower_id=viewer_profile.id,
+            following_id=self.id,
+            status=Follow.FollowStatus.ACCEPTED,
+        ).exists()
+
+    def __str__(self):
+        return f"Profile of {self.full_name}"
