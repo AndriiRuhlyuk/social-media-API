@@ -36,7 +36,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: "celery -A social_media_api_service worker -l INFO"
+    command: >
+      sh -c "python manage.py wait_for_db &&
+          celery -A social_media_api_service worker -l INFO"
     depends_on:
       - social_media
       - redis
@@ -67,7 +69,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5555:5555"
-    command: "celery -A social_media_api_service flower --address=0.0.0.0"
+    command: >
+      sh -c "python manage.py wait_for_db &&
+          celery -A social_media_api_service flower --address=0.0.0.0"
     depends_on:
       - celery
     env_file:

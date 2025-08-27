@@ -43,6 +43,14 @@ INTERNAL_IPS = [
     "127.0.0.1",
     # ...
 ]
+if DEBUG:
+    import socket
+
+    try:
+        hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
+        INTERNAL_IPS += [ip[:-1] + "1" for ip in ips]  # 172.18.0.1 etc
+    except Exception:
+        pass
 
 ALLOWED_HOSTS = []
 
@@ -168,9 +176,9 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
-    # "DEFAULT_PERMISSION_CLASSES": [
-    #     "airport.permissions.IsAdminOrIfAuthenticatedReadOnly",
-    # ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "user.permissions.IsAdminOrIfAuthenticatedReadOnly",
+    ],
 }
 
 SPECTACULAR_SETTINGS = {
