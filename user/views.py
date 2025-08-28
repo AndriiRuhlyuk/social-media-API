@@ -136,8 +136,8 @@ class ManageProfileView(generics.RetrieveUpdateAPIView):
     )
     def upload_image(self, request, pk=None):
         """Endpoint for uploading image to the specific profile"""
-        airline = self.get_object()
-        serializer = self.get_serializer(airline, data=request.data)
+        profile = self.get_object()
+        serializer = self.get_serializer(profile, data=request.data)
 
         if serializer.is_valid():
             serializer.save()

@@ -46,6 +46,13 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractUser):
+    """
+    Default user model for this project:
+    - without username
+    - with email
+    - fields first_name and last_name transferred to Profile
+    """
+
     username = None
     first_name = None
     last_name = None
@@ -64,12 +71,15 @@ class User(AbstractUser):
 
 
 def profile_image_path(instance: "Profile", filename: str) -> str:
+    """Generate unique path to profile image."""
     ext = pathlib.Path(filename).suffix
     filename = f"{instance.user.id}-{uuid.uuid4()}{ext}"
     return f"upload/profile/{filename}"
 
 
 class Profile(models.Model):
+    """Model representing a user's profile."""
+
     class GenderChoices(models.TextChoices):
         MALE = "Male"
         FEMALE = "Female"

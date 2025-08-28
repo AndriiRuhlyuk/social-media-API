@@ -3,6 +3,8 @@ from django.db.models import Q, F
 
 
 class Follow(models.Model):
+    """Follow model"""
+
     class FollowStatus(models.TextChoices):
         PENDING = "Pending"
         ACCEPTED = "Accepted"

@@ -9,6 +9,7 @@ from datetime import date
 class ProfileListSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     follow_status = serializers.SerializerMethodField()
+    profile_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -20,10 +21,17 @@ class ProfileListSerializer(serializers.ModelSerializer):
             "followers_count",
             "following_count",
             "follow_status",
+            "profile_detail",
         )
 
     def get_follow_status(self, obj):
         return getattr(obj, "follow_status", None)
+
+    def get_profile_detail(self, obj):
+        request = self.context.get("request")
+        return reverse(
+            "networking:profiles-detail", kwargs={"pk": obj.pk}, request=request
+        )
 
 
 class PrivateProfileSerializer(serializers.ModelSerializer):
@@ -83,6 +91,8 @@ class ProfileDetailSerializer(serializers.ModelSerializer):
 
 
 class FollowRequestSerializer(serializers.ModelSerializer):
+    """Serializer for view all follow requests with accept/reject urls"""
+
     follower_id = serializers.IntegerField(source="follower.id", read_only=True)
     full_name = serializers.CharField(source="follower.full_name", read_only=True)
     profile_picture = serializers.ImageField(

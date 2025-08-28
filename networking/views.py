@@ -1,6 +1,10 @@
-from django.shortcuts import render
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
+from rest_framework import filters
+from django.db.models import Q
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, permissions, response, status, decorators
 from rest_framework.exceptions import NotFound
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from django.db.models import Exists, OuterRef, Value, CharField, Case, When
 
@@ -16,14 +20,29 @@ from networking.serializers import (
 from user.models import Profile
 
 
+class PublicProfilePagination(PageNumberPagination):
+    page_size = 10
+    max_page_size = 100
+
+
 class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    - GET /profiles/       -> list (without my profile)
-    - GET /profiles/{id}/  -> full profile info (if not is_privet), or partially
-    - POST /profiles/{id}/follow/
-    - POST /profiles/{id}/unfollow/
+    API for managing user profiles.
+    - GET /profiles/       -> List all profiles (excludes current user's profile)
+    - GET /profiles/{id}/  -> Retrieve full profile info (if not private) or partial info
+    - POST /profiles/{id}/follow/ -> Send a follow request
+    - POST /profiles/{id}/unfollow/ -> Unfollow a user
+    - GET /profiles/my/followers/ -> List all users following the current user
+    - GET /profiles/my/following/ -> List all users the current user is following
+    - GET /profiles/my/pending-requests/ -> List pending follow requests
+    - POST /profiles/requests/{follower_id}/accept/ -> Accept a follow request
+    - POST /profiles/requests/{follower_id}/reject/ -> Reject a follow request
     """
 
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ["gender", "is_private", "location"]
+    pagination_class = PublicProfilePagination
+    search_fields = ["first_name", "last_name", "^user__email"]
     queryset = Profile.objects.select_related("user")
     serializer_class = ProfileListSerializer
     permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
@@ -74,8 +93,32 @@ class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
                 )
             )
 
+        search_query = self.request.query_params.get("search")
+        if search_query:
+            queryset = queryset.filter(
+                Q(user__email__icontains=search_query)
+                | Q(first_name__icontains=search_query)
+                | Q(last_name__icontains=search_query)
+            )
+
+        location_query = self.request.query_params.get("location")
+        if location_query:
+            queryset = queryset.filter(Q(location__icontains=location_query))
+
         return queryset
 
+    @extend_schema(
+        description="Retrieve a profile. Returns full details if public or accessible, otherwise partial details.",
+        responses={
+            200: OpenApiResponse(
+                ProfileDetailSerializer, description="Full profile details"
+            ),
+            403: OpenApiResponse(
+                PrivateProfileSerializer,
+                description="Partial profile details for private profile",
+            ),
+        },
+    )
     def retrieve(self, request, *args, **kwargs):
         inst = self.get_object()
 
@@ -103,6 +146,33 @@ class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
             return EmptySerializer
         return ProfileListSerializer
 
+    @extend_schema(
+        description="Send a follow request to a user. Returns 202 if pending, 201 if created, or 200 if already accepted.",
+        responses={
+            201: OpenApiResponse(
+                description="Follow request accepted",
+                examples={
+                    "application/json": {
+                        "detail": "Get Follow (Accepted).",
+                        "status": "Accepted",
+                    }
+                },
+            ),
+            202: OpenApiResponse(
+                description="Follow request pending",
+                examples={
+                    "application/json": {
+                        "detail": "Request to following was sent (Pending).",
+                        "status": "Pending",
+                    }
+                },
+            ),
+            400: OpenApiResponse(
+                description="Cannot follow yourself",
+                examples={"application/json": {"detail": "Cannot follow yourself."}},
+            ),
+        },
+    )
     @decorators.action(
         detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated]
     )
@@ -142,6 +212,19 @@ class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response({"detail": msg, "status": obj.status}, status=code)
 
+    @extend_schema(
+        description="Unfollow a user.",
+        responses={
+            200: OpenApiResponse(
+                description="Unfollowed or follow does not exist",
+                examples={"application/json": {"detail": "Unfollow."}},
+            ),
+            400: OpenApiResponse(
+                description="Cannot unfollow yourself",
+                examples={"application/json": {"detail": "Cannot unfollow yourself."}},
+            ),
+        },
+    )
     @decorators.action(
         detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated]
     )
@@ -168,15 +251,15 @@ class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
     def my_pending_requests(self, request):
         """List of requests to follow, that wait my decision."""
         me = request.user.profile
-        qs = (
+        queryset = (
             Follow.objects.select_related("follower__user")
             .filter(following=me, status=Follow.FollowStatus.PENDING)
             .order_by("-created_at")
         )
-        ser = FollowRequestSerializer(
-            qs, many=True, context=self.get_serializer_context()
+        serializer = FollowRequestSerializer(
+            queryset, many=True, context=self.get_serializer_context()
         )
-        return response.Response(ser.data)
+        return response.Response(serializer.data)
 
     @decorators.action(
         detail=False,
@@ -239,3 +322,81 @@ class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
                 "status": obj.status,
             }
         )
+
+    @decorators.action(
+        detail=False,
+        methods=["get"],
+        permission_classes=[permissions.IsAuthenticated],
+        url_path="my/following",
+    )
+    def my_following(self, request):
+        """A list of all users the user is following."""
+        me = request.user.profile
+        queryset = self.get_queryset().filter(
+            pk__in=Follow.objects.filter(
+                follower=me, status=Follow.FollowStatus.ACCEPTED
+            ).values_list("following_id", flat=True)
+        )
+
+        serializer = ProfileListSerializer(
+            queryset,
+            many=True,
+            context=self.get_serializer_context(),
+        )
+        return response.Response(serializer.data)
+
+    @decorators.action(
+        detail=False,
+        methods=["get"],
+        permission_classes=[permissions.IsAuthenticated],
+        url_path="my/followers",
+    )
+    def my_followers(self, request):
+        """List of all users who are following user."""
+        me = request.user.profile
+        queryset = self.get_queryset().filter(
+            pk__in=Follow.objects.filter(
+                following=me, status=Follow.FollowStatus.ACCEPTED
+            ).values_list("follower_id", flat=True)
+        )
+
+        serializer = ProfileListSerializer(
+            queryset, many=True, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)
+
+    @extend_schema(
+        description="List all profiles excluding the current user's profile. "
+        "Supports filtering by gender, is_private, location, "
+        "and search by first_name, last_name, or email.",
+        parameters=[
+            OpenApiParameter(
+                name="gender",
+                description="Filter by gender (Male, Female, Other)",
+                type=str,
+                enum=["Male", "Female", "Other"],
+            ),
+            OpenApiParameter(
+                name="is_private", description="Filter by privacy status", type=bool
+            ),
+            OpenApiParameter(
+                name="location",
+                description="Filter by location (partial match)",
+                type=str,
+            ),
+            OpenApiParameter(
+                name="search",
+                description="Search by first_name, last_name, or email (starts with)",
+                type=str,
+            ),
+            OpenApiParameter(
+                name="page", description="Page number for pagination", type=int
+            ),
+            OpenApiParameter(
+                name="page_size", description="Number of results per page", type=int
+            ),
+        ],
+        responses={200: ProfileListSerializer(many=True)},
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
