@@ -24,13 +24,14 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
     SpectacularRedocView,
 )
-from social_media_api_service import settings
+from django.conf import settings
 
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/user/", include("user.urls", namespace="user")),
     path("api/networking/", include("networking.urls", namespace="networking")),
+    path("api/content/", include("content.urls", namespace="content")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/doc/swagger/",
@@ -42,8 +43,8 @@ urlpatterns = [
         SpectacularRedocView.as_view(url_name="schema"),
         name="redoc",
     ),
-    path("__debug__/", include(debug_toolbar.urls)),
 ]
 
 if settings.DEBUG:
+    urlpatterns += [path("__debug__/", include(debug_toolbar.urls))]
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

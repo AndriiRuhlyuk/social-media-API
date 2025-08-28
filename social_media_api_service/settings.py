@@ -38,20 +38,6 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 DEBUG = os.getenv("DEBUG", default=False)
 
-INTERNAL_IPS = [
-    # ...
-    "127.0.0.1",
-    # ...
-]
-if DEBUG:
-    import socket
-
-    try:
-        hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
-        INTERNAL_IPS += [ip[:-1] + "1" for ip in ips]  # 172.18.0.1 etc
-    except Exception:
-        pass
-
 ALLOWED_HOSTS = []
 
 
@@ -72,16 +58,17 @@ INSTALLED_APPS = [
     "django_celery_beat",
     "user",
     "networking",
+    "content",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
-    "debug_toolbar.middleware.DebugToolbarMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -208,3 +195,17 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
 }
+
+INTERNAL_IPS = [
+    # ...
+    "127.0.0.1",
+    # ...
+]
+if DEBUG:
+    import socket
+
+    try:
+        hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
+        INTERNAL_IPS += [f"{ip.rsplit('.', 1)[0]}.1" for ip in ips]
+    except Exception:
+        pass
