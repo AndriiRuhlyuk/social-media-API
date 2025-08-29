@@ -1,6 +1,6 @@
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
@@ -8,13 +8,14 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from content.models import Post
-from content.permissions import IsPostAuthor
+from content.permissions import CanViewPostDetail
 from content.serializers import (
     PostListSerializer,
     PostSerializer,
     TagFilterSerializer,
 )
 from networking.models import Follow
+from user.models import Profile
 
 
 class PostPagination(PageNumberPagination):
@@ -38,7 +39,7 @@ class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.select_related("author__user").prefetch_related("tags")
     serializer_class = PostSerializer
     pagination_class = PostPagination
-    permission_classes = [IsAuthenticated, IsPostAuthor]
+    permission_classes = [IsAuthenticated]
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -47,6 +48,11 @@ class PostViewSet(viewsets.ModelViewSet):
     filterset_fields = ["author", "created_at"]
     search_fields = ["title", "content", "tags__name"]
     ordering_fields = ["created_at", "author__full_name"]
+
+    def get_permissions(self):
+        if self.action in ["create", "update", "partial_update", "destroy", "retrieve"]:
+            return [CanViewPostDetail()]
+        return [IsAuthenticated()]
 
     def get_serializer_class(self):
         if self.action == "by_tag":
@@ -57,7 +63,10 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Automatically identifies the author of the post as the current profile user"""
-        serializer.save(author=self.request.user.profile)
+        profile = getattr(self.request.user, "profile", None)
+        if not profile:
+            profile = Profile.objects.get(user=self.request.user)
+        serializer.save(author=profile)
 
     def get_queryset(self):
         """Return posts followers and following users"""
@@ -67,6 +76,7 @@ class PostViewSet(viewsets.ModelViewSet):
             my_profile = user.profile
             queryset = queryset.filter(
                 Q(author__is_private=False)
+                | Q(author=my_profile)
                 | Q(
                     author__follower_links__follower=my_profile,
                     author__follower_links__status=Follow.FollowStatus.ACCEPTED,
@@ -80,7 +90,7 @@ class PostViewSet(viewsets.ModelViewSet):
         description="List all posts by the current user.",
         responses={200: PostListSerializer(many=True)},
     )
-    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=["get"])
     def my_posts(self, request):
         """List all posts by the current user."""
         queryset = self.get_queryset().filter(author=self.request.user.profile)

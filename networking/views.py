@@ -5,6 +5,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, permissions, response, status, decorators
 from rest_framework.exceptions import NotFound
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Exists, OuterRef, Value, CharField, Case, When
 
@@ -45,7 +46,9 @@ class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["first_name", "last_name", "^user__email"]
     queryset = Profile.objects.select_related("user")
     serializer_class = ProfileListSerializer
-    permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
+    permission_classes = [
+        IsAuthenticated,
+    ]
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related("user")

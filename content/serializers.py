@@ -53,10 +53,22 @@ class PostSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create post with tags from content."""
         tags_data = self.context.get("extracted_tags", [])
+        existing_tags = Tag.objects.filter(name__in=[tag.lower() for tag in tags_data])
+        existing_tag_names = set(existing_tags.values_list("name", flat=True))
+        new_tags = [
+            Tag(name=tag_name.lower())
+            for tag_name in tags_data
+            if tag_name.lower() not in existing_tag_names
+        ]
+        if new_tags:
+            Tag.objects.bulk_create(new_tags)
+        tags = list(existing_tags) + [
+            Tag.objects.get(name=tag_name.lower())
+            for tag_name in tags_data
+            if tag_name.lower() not in existing_tag_names
+        ]
         post = super().create(validated_data)
-        for tag_name in tags_data:
-            tag, _ = Tag.objects.get_or_create(name=tag_name)
-            post.tags.add(tag)
+        post.tags.add(*tags)
         return post
 
     def update(self, instance, validated_data):
@@ -65,9 +77,23 @@ class PostSerializer(serializers.ModelSerializer):
         post = super().update(self.instance, validated_data)
         if tags_data:
             post.tags.clear()
-            for tag_name in tags_data:
-                tag, _ = Tag.objects.get_or_create(name=tag_name)
-                post.tags.add(tag)
+            existing_tags = Tag.objects.filter(
+                name__in=[tag.lower() for tag in tags_data]
+            )
+            existing_tag_names = set(existing_tags.values_list("name", flat=True))
+            new_tags = [
+                Tag(name=tag_name.lower())
+                for tag_name in tags_data
+                if tag_name.lower() not in existing_tag_names
+            ]
+            if new_tags:
+                Tag.objects.bulk_create(new_tags)
+            tags = list(existing_tags) + [
+                Tag.objects.get(name=tag_name.lower())
+                for tag_name in tags_data
+                if tag_name.lower() not in existing_tag_names
+            ]
+            post.tags.add(*tags)
         return post
 
 

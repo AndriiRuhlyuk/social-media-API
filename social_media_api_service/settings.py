@@ -29,11 +29,6 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
-def env_bool(name: str, default: bool = False) -> bool:
-    val = os.getenv(name)
-    if val is None:
-        return default
-    return val.strip().lower() in {"1", "true"}
 
 
 DEBUG = os.getenv("DEBUG", default=False)
@@ -196,16 +191,13 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": True,
 }
 
-INTERNAL_IPS = [
-    # ...
-    "127.0.0.1",
-    # ...
-]
+INTERNAL_IPS = ["127.0.0.1", "::1"]
 if DEBUG:
     import socket
 
     try:
         hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
-        INTERNAL_IPS += [f"{ip.rsplit('.', 1)[0]}.1" for ip in ips]
+        INTERNAL_IPS += [f"{ip.rsplit('.', 1)[0]}.1" for ip in ips]  # 172.xx.x.1
+        INTERNAL_IPS += ["192.168.65.1"]  # Docker Desktop (macOS/Windows)
     except Exception:
         pass
