@@ -6,6 +6,8 @@ from django.utils.translation import gettext as _
 
 
 class Tag(models.Model):
+    """Model for tags that associate with posts for categorize content"""
+
     name = models.CharField(max_length=50, unique=True)
 
     class Meta:
@@ -23,6 +25,8 @@ def post_image_path(instance: "Post", filename: str) -> str:
 
 
 class Post(models.Model):
+    """Post model."""
+
     class PostStatus(models.TextChoices):
         DRAFT = "draft", "Draft"
         SCHEDULED = "scheduled", "Scheduled"
@@ -53,6 +57,8 @@ class Post(models.Model):
     published_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    likes_count = models.PositiveIntegerField(default=0)
+    comments_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ["-created_at"]
@@ -101,4 +107,62 @@ class Post(models.Model):
         ]
 
     def __str__(self):
-        return f"Post by {self.author.full_name} at {self.created_at}"
+        return f"Post: {self.title}, (#{self.id})"
+
+
+class Like(models.Model):
+    """Model for like sign for user's posts."""
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="likes")
+    user = models.ForeignKey(
+        "user.Profile",
+        on_delete=models.CASCADE,
+        related_name="likes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["post", "user"],
+                name="unique_like_user",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["post", "-created_at"], name="like_post_created_idx"),
+            models.Index(fields=["user", "-created_at"], name="like_user_created_idx"),
+        ]
+
+
+class Comment(models.Model):
+    """Model for comment on post with support threads."""
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(
+        "user.Profile", on_delete=models.CASCADE, related_name="comments"
+    )
+    content = models.TextField(max_length=2000)
+    parent = models.ForeignKey(
+        "self",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="children",
+    )
+    is_deleted = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["post", "created_at"], name="comment_post_created_idx"
+            ),
+            models.Index(
+                fields=["post", "parent", "created_at"], name="comment_thread_idx"
+            ),
+        ]
+
+    def __str__(self):
+        return f"Comment: {self.content}"

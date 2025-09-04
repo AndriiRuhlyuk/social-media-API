@@ -1,4 +1,3 @@
-# content/scheduling.py
 from celery import current_app
 from celery.result import AsyncResult
 from django.utils import timezone
@@ -8,10 +7,10 @@ from .tasks import publish_post
 
 
 def revoke_task(task_id: str) -> None:
+    """Cancel task."""
     if not task_id:
         return
     try:
-
         current_app.control.revoke(task_id, terminate=False)
         AsyncResult(task_id).revoke(terminate=False)
     except Exception:
