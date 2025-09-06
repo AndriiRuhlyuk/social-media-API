@@ -23,11 +23,17 @@ User Management
     Users: Register, authenticate, and manage user accounts.
     Profiles: Update profile details, upload profile pictures, and manage privacy settings.
     Authentication: JWT-based authentication with access token (180 minutes) and refresh token (1 day).
+    Auto Profile Creation: Profile is automatically created after user registration (via Celery task).
+    Token Blacklist Cleanup: Expired refresh tokens are automatically cleaned by a scheduled Celery task.
 
 Content Management
 
     Posts: Create, schedule, update, and delete posts with tag support and media uploads.
+    Scheduled Posts: Posts with status SCHEDULED are automatically published at the scheduled time.
+    Rescheduling: Editing a scheduled post cancels the old Celery task and creates a new one.
     Comments: Add, edit, and delete comments with nested replies and spam protection.
+    Parent/Child Comments: Support for threaded comments and retrieving children by endpoint.
+    Soft Delete: Comments are soft-deleted (hidden instead of being permanently removed).
     Likes: Like and unlike posts with real-time counter updates.
     Tags: Automatic tag extraction from post content for filtering and recommendations.
 
@@ -61,34 +67,37 @@ http://127.0.0.1:8000/api/doc/swagger/
 
 # API Endpoints
 
-    Basic resources
-GET/POST /api/content/posts/ - List or create posts.
-GET/PUT/DELETE /api/content/posts/{id}/ - Retrieve, update, or delete a post.
-PUT/DELETE /api/content/posts/{id}/like/ - Like or unlike a post.
-GET/POST /api/content/comments/ - List or create comments.
-GET/PUT/DELETE /api/content/comments/{id}/ - Retrieve, update, or delete a comment.
-GET /api/content/comments/{id}/children/ - List child comments.
-GET/POST /api/networking/profiles/ - List profiles or filter by location.
-GET /api/networking/profiles/{id}/ - Retrieve profile details.
-GET/POST /api/networking/profiles/{id}/follow/ - Follow a profile or check follow status.
-POST /api/networking/profiles/{id}/unfollow/ - Unfollow a profile.
-POST /api/networking/profiles/requests/{id}/accept/ - Accept a follow request.
-POST /api/networking/profiles/requests/{id}/reject/ - Reject a follow request.
-GET /api/networking/profiles/my-followers/ - List followers.
-GET /api/networking/profiles/my-following/ - List following.
-GET /api/networking/profiles/my-pending-requests/ - List pending follow requests.   
+Basic resources
 
-    Special endpoints
-POST /api/user/profile/me/{id}/ - Upload profile picture.
-POST /api/content/posts/{id}/ - Upload post media.
-POST /api/content/posts/by_tag/ - Filter posts by tags.
-GET /api/content/posts/recommended/ - List recommended posts based on liked/commented tags.     
+    GET/POST /api/content/posts/ - List or create posts.
+    GET/PUT/DELETE /api/content/posts/{id}/ - Retrieve, update, or delete a post.
+    PUT/DELETE /api/content/posts/{id}/like/ - Like or unlike a post.
+    GET/POST /api/content/comments/ - List or create comments.
+    GET/PUT/DELETE /api/content/comments/{id}/ - Retrieve, update, or delete a comment.
+    GET /api/content/comments/{id}/children/ - List child comments.
+    GET/POST /api/networking/profiles/ - List profiles or filter by location.
+    GET /api/networking/profiles/{id}/ - Retrieve profile details.
+    GET/POST /api/networking/profiles/{id}/follow/ - Follow a profile or check follow status.
+    POST /api/networking/profiles/{id}/unfollow/ - Unfollow a profile.
+    POST /api/networking/profiles/requests/{id}/accept/ - Accept a follow request.
+    POST /api/networking/profiles/requests/{id}/reject/ - Reject a follow request.
+    GET /api/networking/profiles/my-followers/ - List followers.
+    GET /api/networking/profiles/my-following/ - List following.
+    GET /api/networking/profiles/my-pending-requests/ - List pending follow requests.   
 
-    Authentication
-POST /api/user/register/ - Create a new user account.
-POST /api/user/token/ - Obtain JWT access and refresh tokens.
-POST /api/user/refresh/ - Refresh JWT access token.
-GET /api/user/me/ - Retrieve authenticated user details.        
+Special endpoints
+
+    POST /api/user/profile/me/{id}/ - Upload profile picture.
+    POST /api/content/posts/{id}/ - Upload post media.
+    POST /api/content/posts/by_tag/ - Filter posts by tags.
+    GET /api/content/posts/recommended/ - List recommended posts based on liked/commented tags.     
+
+Authentication
+
+    POST /api/user/register/ - Create a new user account.
+    POST /api/user/token/ - Obtain JWT access and refresh tokens.
+    POST /api/user/refresh/ - Refresh JWT access token.
+    GET /api/user/me/ - Retrieve authenticated user details.        
 
 # Installing using GitHub
 
