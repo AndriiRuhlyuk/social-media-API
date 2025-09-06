@@ -1,4 +1,5 @@
-from rest_framework import generics, status
+from rest_framework import mixins
+from rest_framework import generics, status, viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, permission_classes
@@ -23,7 +24,9 @@ def user_api_root(request, format=None):
             "token_verify": reverse("user:token_verify", request=request),
             "me": reverse("user:manage", request=request),
             "logout": reverse("user:logout", request=request),
-            "profile_me": reverse("user:manage_profile", request=request),
+            "profile_me": reverse(
+                "user:profile-detail", request=request, kwargs={"pk": "me"}
+            ),
         }
     )
 
@@ -86,7 +89,9 @@ class LogoutUserView(generics.GenericAPIView):
         )
 
 
-class ManageProfileView(generics.RetrieveUpdateAPIView):
+class ManageProfileView(
+    viewsets.GenericViewSet, mixins.RetrieveModelMixin, mixins.UpdateModelMixin
+):
     """
     Retrieve and update authenticated user's profile.
     GET - view own profile
@@ -103,12 +108,14 @@ class ManageProfileView(generics.RetrieveUpdateAPIView):
             return self.request.user.profile
         except Profile.DoesNotExist:
 
-            profile = Profile.objects.create(
+            profile, _ = Profile.objects.get_or_create(
                 user=self.request.user,
-                is_private=False,
-                followers_count=0,
-                following_count=0,
-                posts_count=0,
+                defaults={
+                    "is_private": False,
+                    "followers_count": 0,
+                    "following_count": 0,
+                    "posts_count": 0,
+                },
             )
             return profile
 
@@ -119,28 +126,26 @@ class ManageProfileView(generics.RetrieveUpdateAPIView):
         return Response(serializer.data)
 
     def update(self, request, *args, **kwargs):
-        """Update user's own profile"""
-        partial = kwargs.pop("partial", False)
+        partial = kwargs.pop("partial", True)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-
         return Response(serializer.data)
 
     @action(
-        methods=["POST"],
-        detail=True,
+        methods=["post"],
+        detail=False,
         url_path="upload-image",
-        permission_classes=[IsAdminOrOwner],
+        permission_classes=[IsAuthenticated],
     )
-    def upload_image(self, request, pk=None):
-        """Endpoint for uploading image to the specific profile"""
+    def upload_image(self, request):
+        """
+        Endpoint for uploading image to the specific profile
+        POST /profile/upload-image/
+        """
         profile = self.get_object()
-        serializer = self.get_serializer(profile, data=request.data)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(profile, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)

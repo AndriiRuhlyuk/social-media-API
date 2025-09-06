@@ -5,7 +5,7 @@ from networking.models import Follow
 
 
 class CanViewPostDetail(BasePermission):
-    """Permission to view post detail and comment post"""
+    """Permission to view post detail"""
 
     def has_object_permission(self, request, view, obj):
         if not request.user.is_authenticated:
@@ -27,6 +27,24 @@ class CanViewPostDetail(BasePermission):
         return False
 
 
-class IsCommentAuthorOrReadOnly(BasePermission):
+class CanAccessComment(BasePermission):
+    """Permission to update/delete comment"""
+
     def has_object_permission(self, request, view, obj):
-        return request.method in SAFE_METHODS or obj.author == request.user.profile
+        if not request.user.is_authenticated:
+            return False
+
+        if request.method in ["POST", "PUT", "DELETE"]:
+            return obj.author == request.user.profile
+
+        if request.method in SAFE_METHODS:
+            return obj.post.status == Post.PostStatus.PUBLISHED and (
+                obj.post.author == request.user.profile
+                or Follow.objects.filter(
+                    follower=request.user.profile,
+                    following=obj.post.author,
+                    status=Follow.FollowStatus.ACCEPTED,
+                ).exists()
+            )
+
+        return False

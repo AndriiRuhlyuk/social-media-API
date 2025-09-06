@@ -131,5 +131,7 @@ class FollowRequestSerializer(serializers.ModelSerializer):
         )
 
 
-class EmptySerializer(serializers.Serializer):
-    pass
+class FollowStatusSerializer(serializers.Serializer):
+    """Serializer for follow status response"""
+
+    followed = serializers.BooleanField(read_only=True)

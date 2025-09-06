@@ -16,7 +16,7 @@ from networking.serializers import (
     ProfileDetailSerializer,
     PrivateProfileSerializer,
     FollowRequestSerializer,
-    EmptySerializer,
+    FollowStatusSerializer,
 )
 from user.models import Profile
 
@@ -51,6 +51,10 @@ class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
     ]
 
     def get_queryset(self):
+        """
+        Queryset without user's profile
+        Annotate follow status
+        """
         queryset = super().get_queryset().select_related("user")
         user = getattr(self.request, "user", None)
         if user and user.is_authenticated:
@@ -146,7 +150,7 @@ class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
             "reject_request",
             "my_pending_requests",
         ]:
-            return EmptySerializer
+            return FollowStatusSerializer
         return ProfileListSerializer
 
     @extend_schema(
@@ -177,12 +181,27 @@ class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
         },
     )
     @decorators.action(
-        detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated]
+        detail=True,
+        methods=["get", "post"],
+        permission_classes=[permissions.IsAuthenticated],
     )
     def follow(self, request, pk=None):
         """Follow request"""
         me = request.user.profile
         target = self.get_object()
+
+        if request.method == "GET":
+            followed = Follow.objects.filter(
+                follower=me,
+                following=target,
+                status=Follow.FollowStatus.ACCEPTED,
+            ).exists()
+            return Response(
+                {
+                    "followed": followed,
+                }
+            )
+
         if me.pk == target.pk:
             return response.Response(
                 {"detail": "Cannot follow yourself."},
@@ -229,12 +248,27 @@ class PublicProfileViewSet(viewsets.ReadOnlyModelViewSet):
         },
     )
     @decorators.action(
-        detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated]
+        detail=True,
+        methods=["get", "post"],
+        permission_classes=[permissions.IsAuthenticated],
     )
     def unfollow(self, request, pk=None):
         """Unfollow request"""
         me = request.user.profile
         target = self.get_object()
+
+        if request.method == "GET":
+            followed = Follow.objects.filter(
+                follower=me,
+                following=target,
+                status=Follow.FollowStatus.ACCEPTED,
+            ).exists()
+            return Response(
+                {
+                    "followed": followed,
+                }
+            )
+
         if me.pk == target.pk:
             return response.Response(
                 {"detail": "Cannot unfollow yourself."},

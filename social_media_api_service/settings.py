@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -31,9 +32,27 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 
 
-DEBUG = os.getenv("DEBUG", default=False)
+def env_bool(name: str, default: bool = False) -> bool:
+    return str(os.getenv(name, str(default))).strip().lower() in (
+        "1",
+        "true",
+        "t",
+        "yes",
+        "on",
+    )
 
-ALLOWED_HOSTS = []
+
+DEBUG = env_bool("DEBUG", False)
+
+IS_WEB_PROCESS = any(
+    token in " ".join(sys.argv) for token in ("runserver", "gunicorn", "uwsgi")
+)
+
+ALLOWED_HOSTS = (
+    [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()]
+    if not DEBUG
+    else []
+)
 
 
 # Application definition
@@ -49,7 +68,6 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "django_filters",
-    "debug_toolbar",
     "django_celery_beat",
     "user",
     "networking",
@@ -59,13 +77,24 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "debug_toolbar.middleware.DebugToolbarMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+try:
+    import debug_toolbar
+
+    HAVE_DJDT = True
+except Exception:
+    HAVE_DJDT = False
+
+if DEBUG and IS_WEB_PROCESS and HAVE_DJDT:
+    INSTALLED_APPS.append("debug_toolbar")
+
+    MIDDLEWARE.insert(2, "debug_toolbar.middleware.DebugToolbarMiddleware")
 
 ROOT_URLCONF = "social_media_api_service.urls"
 
@@ -198,7 +227,7 @@ if DEBUG:
 
     try:
         hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
-        INTERNAL_IPS += [f"{ip.rsplit('.', 1)[0]}.1" for ip in ips]  # 172.xx.x.1
-        INTERNAL_IPS += ["192.168.65.1"]  # Docker Desktop (macOS/Windows)
+        INTERNAL_IPS += [f"{ip.rsplit('.', 1)[0]}.1" for ip in ips]
+        INTERNAL_IPS += ["192.168.65.1"]
     except Exception:
         pass

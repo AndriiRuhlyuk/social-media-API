@@ -1,6 +1,5 @@
 from django.db import transaction
 from django.db.models import Q, F, Exists, OuterRef, Value, BooleanField, Count
-from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework import filters, viewsets, status
@@ -12,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Prefetch
 
 from content.models import Post, Tag, Like, Comment
-from content.permissions import CanViewPostDetail, IsCommentAuthorOrReadOnly
+from content.permissions import CanViewPostDetail, CanAccessComment
 from content.serializers import (
     PostListSerializer,
     PostSerializer,
@@ -274,7 +273,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
                 return Response({"liked": True, "likes_count": post.likes_count})
 
-            else:  # DELETE
+            else:
                 deleted_count = Like.objects.filter(user=me, post=post).delete()[0]
                 if deleted_count > 0:
                     Post.objects.filter(pk=post.pk).update(
@@ -379,7 +378,7 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     queryset = Comment.objects.select_related("author__user", "author", "post")
     serializer_class = CommentSerializer
-    permission_classes = [IsAuthenticated, IsCommentAuthorOrReadOnly]
+    permission_classes = [IsAuthenticated, CanAccessComment]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["post", "parent"]
     ordering_fields = ["created_at", "updated_at"]
@@ -393,11 +392,28 @@ class CommentViewSet(viewsets.ModelViewSet):
         return CommentSerializer
 
     def get_queryset(self):
-        """Base queryset: exclude deleted, add annotations"""
+        """Return comments only for posts the user can view."""
+        user_profile = (
+            self.request.user.profile if self.request.user.is_authenticated else None
+        )
+        if not user_profile:
+            return Comment.objects.none()
+
         return (
             super()
             .get_queryset()
-            .filter(is_deleted=False)
+            .filter(
+                is_deleted=False,
+                post__status=Post.PostStatus.PUBLISHED,
+                post__in=Post.objects.filter(
+                    Q(author=user_profile)
+                    | Q(
+                        author__in=Follow.objects.filter(
+                            follower=user_profile, status=Follow.FollowStatus.ACCEPTED
+                        ).values("following")
+                    )
+                ),
+            )
             .annotate(
                 children_count=Count("children", filter=Q(children__is_deleted=False))
             )

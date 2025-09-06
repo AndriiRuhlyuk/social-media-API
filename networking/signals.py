@@ -8,7 +8,7 @@ from user.models import Profile
 
 @receiver(pre_save, sender=Follow)
 def _stash_old_status(sender, instance: Follow, **kwargs):
-
+    """Saved old status"""
     if instance.pk:
         try:
             old = sender.objects.only("status").get(pk=instance.pk).status
@@ -21,6 +21,9 @@ def _stash_old_status(sender, instance: Follow, **kwargs):
 
 @receiver(post_save, sender=Follow)
 def _update_counters_on_save(sender, instance: Follow, created, **kwargs):
+    """
+    Count following and followers for user
+    """
     old = getattr(instance, "_old_status", None)
     new = instance.status
 
